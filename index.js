@@ -1,10 +1,11 @@
-// index.js
 require('dotenv').config(); // Carga variables de entorno desde .env
 
 const TelegramBot = require('node-telegram-bot-api');
 const admin = require('firebase-admin');
 const cron = require('node-cron');
-const serviceAccount = require('./serviceAccountKey.json');
+
+// Carga credenciales Firebase desde variable de entorno (JSON string)
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
