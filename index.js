@@ -1,31 +1,34 @@
-require('dotenv').config(); // Carga variables de entorno desde .env
+require('dotenv').config(); // Carga variables de entorno
 
 const TelegramBot = require('node-telegram-bot-api');
 const admin = require('firebase-admin');
 const cron = require('node-cron');
 
-// Carga credenciales Firebase desde variable de entorno (JSON string)
+// ✅ Parsear credenciales desde .env y reparar el salto de línea en la private key
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
 
+// 🔐 Inicializar Firebase Admin
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
 const db = admin.firestore();
 
-const token = process.env.TELEGRAM_BOT_TOKEN; // Token seguro desde .env
+const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-console.log('Bot iniciado y escuchando...');
+console.log('✅ Bot iniciado y escuchando...');
 
 function esHoraPermitida() {
   const hora = new Date().getHours();
-  return hora >= 6 && hora < 22; // entre 6AM y antes de 10PM
+  return hora >= 6 && hora < 22;
 }
 
-// Función para enviar notificación a estudiantes y padres
+// ✅ Función para enviar notificación a estudiantes y padres
 async function enviarNotificacion({ titulo, descripcion, fechaEntrega, grado, paralelo, asignaturaNombre, estudiantes }) {
   const mensajeBase = `📌 *Nueva tarea de ${asignaturaNombre}* 📌\nGrado: ${grado}\nParalelo: ${paralelo}\n\n*${titulo}*\n${descripcion}\n\n📅 Fecha de entrega: ${fechaEntrega}`;
+
   for (const est of estudiantes) {
     if (est.chatIdTelegram) {
       await bot.sendMessage(est.chatIdTelegram, mensajeBase, { parse_mode: 'Markdown' });
@@ -39,7 +42,7 @@ async function enviarNotificacion({ titulo, descripcion, fechaEntrega, grado, pa
   }
 }
 
-// Registrar chatIdTelegram para estudiantes con /start cédula
+// ✅ Registrar chatIdTelegram para estudiantes
 bot.onText(/\/start (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const cedula = match[1].trim();
@@ -62,7 +65,7 @@ bot.onText(/\/start (.+)/, async (msg, match) => {
   }
 });
 
-// Registrar chatIdTelegram para padres con /startpadre cédula
+// ✅ Registrar chatIdTelegram para padres
 bot.onText(/\/startpadre (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const cedula = match[1].trim();
@@ -85,7 +88,7 @@ bot.onText(/\/startpadre (.+)/, async (msg, match) => {
   }
 });
 
-// Escuchar tareas nuevas y manejar notificaciones inmediatas o diferidas
+// 🔔 Escuchar tareas nuevas
 const tareasRef = db.collectionGroup('Tareas');
 
 tareasRef.onSnapshot(snapshot => {
@@ -130,7 +133,7 @@ tareasRef.onSnapshot(snapshot => {
   });
 });
 
-// Cron para enviar notificaciones pendientes a las 6AM todos los días
+// 🕕 Tareas pendientes a las 6AM
 cron.schedule('0 6 * * *', async () => {
   console.log('⏰ Ejecutando notificaciones pendientes (6AM)...');
   const snap = await db.collection('NotificacionesPendientes').get();
