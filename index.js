@@ -1,3 +1,6 @@
+// index.js
+require('dotenv').config(); // Carga variables de entorno desde .env
+
 const TelegramBot = require('node-telegram-bot-api');
 const admin = require('firebase-admin');
 const cron = require('node-cron');
@@ -6,9 +9,10 @@ const serviceAccount = require('./serviceAccountKey.json');
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
+
 const db = admin.firestore();
 
-const token = '8042832465:AAEm1uX86LrCqEWFp9FwA6r8IFam5A2onz8'; // Pon aquí tu token real
+const token = process.env.TELEGRAM_BOT_TOKEN; // Token seguro desde .env
 const bot = new TelegramBot(token, { polling: true });
 
 console.log('Bot iniciado y escuchando...');
