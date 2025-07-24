@@ -1,0 +1,19 @@
+# Node modules (no subir dependencias)
+node_modules/
+
+# Archivo con claves privadas de Firebase (no subir)
+serviceAccountKey.json
+
+# Archivos de logs
+*.log
+
+# Archivos de sistema (Windows, macOS)
+.DS_Store
+Thumbs.db
+
+# Dependencias de React Native (si aplican)
+.expo/
+.expo-shared/
+
+# Otros archivos temporales
+.env
