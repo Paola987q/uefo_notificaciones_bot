@@ -21,10 +21,11 @@ const bot = new TelegramBot(token, { polling: true });
 
 console.log('✅ Bot iniciado y escuchando...');
 
-// Función para validar horario (6AM a 10PM)
+// ✅ Función para validar si estamos entre las 6AM y 10PM hora de Ecuador
 function esHoraPermitida() {
-  const hora = new Date().getHours();
-  return hora >= 6 && hora < 22;
+  const ahoraUTC = new Date();
+  const horaEcuador = (ahoraUTC.getUTCHours() + 24 - 5) % 24; // UTC-5
+  return horaEcuador >= 6 && horaEcuador < 22;
 }
 
 // Función para enviar notificación a estudiantes y padres
@@ -92,7 +93,7 @@ bot.onText(/\/startpadre (.+)/, async (msg, match) => {
   }
 });
 
-// Escuchar nuevas tareas en las subcolecciones "Tareas" (collectionGroup)
+// Escuchar nuevas tareas en las subcolecciones "Tareas"
 const tareasRef = db.collectionGroup('Tareas');
 
 tareasRef.onSnapshot(snapshot => {
@@ -108,7 +109,7 @@ tareasRef.onSnapshot(snapshot => {
       const paralelo = cursoData.paralelo || 'Desconocido';
       const asignaturaNombre = cursoData.asignaturaNombre || 'Asignatura';
 
-      // Obtener estudiantes del curso y paralelo
+      // Obtener estudiantes del curso
       const estudiantesSnap = await db.collection('Estudiantes')
         .where('cursoId', '==', cursoDocRef.id)
         .where('paralelo', '==', paralelo)
@@ -132,7 +133,7 @@ tareasRef.onSnapshot(snapshot => {
       if (esHoraPermitida()) {
         await enviarNotificacion(dataNotificacion);
       } else {
-        // Guardar para notificar a las 6 AM
+        // Guardar para enviar a las 6AM
         await db.collection('NotificacionesPendientes').add(dataNotificacion);
         console.log('⏰ Notificación diferida para las 6AM');
       }
@@ -140,9 +141,10 @@ tareasRef.onSnapshot(snapshot => {
   });
 });
 
-// Cron para enviar notificaciones pendientes a las 6AM cada día
-cron.schedule('0 6 * * *', async () => {
-  console.log('⏰ Ejecutando notificaciones pendientes (6AM)...');
+// 🕐 CRON corregido para que corra a las 6AM de ECUADOR (UTC-5)
+cron.schedule('0 11 * * *', async () => {
+  // 11 UTC = 6 AM Ecuador (UTC-5)
+  console.log('⏰ Ejecutando notificaciones pendientes (6AM Ecuador)...');
   const snap = await db.collection('NotificacionesPendientes').get();
   for (const doc of snap.docs) {
     const data = doc.data();
