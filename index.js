@@ -1,31 +1,33 @@
-require('dotenv').config(); // Carga variables de entorno
+require('dotenv').config();
 
 const TelegramBot = require('node-telegram-bot-api');
 const admin = require('firebase-admin');
 const cron = require('node-cron');
 
-// ✅ Parsear credenciales desde .env y reparar el salto de línea en la private key
+// Parsear y preparar credenciales Firebase
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n').trim();
 
-// 🔐 Inicializar Firebase Admin
+// Inicializar Firebase Admin
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
 const db = admin.firestore();
 
+// Inicializar bot Telegram
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 console.log('✅ Bot iniciado y escuchando...');
 
+// Función para validar horario (6AM a 10PM)
 function esHoraPermitida() {
   const hora = new Date().getHours();
   return hora >= 6 && hora < 22;
 }
 
-// ✅ Función para enviar notificación a estudiantes y padres
+// Función para enviar notificación a estudiantes y padres
 async function enviarNotificacion({ titulo, descripcion, fechaEntrega, grado, paralelo, asignaturaNombre, estudiantes }) {
   const mensajeBase = `📌 *Nueva tarea de ${asignaturaNombre}* 📌\nGrado: ${grado}\nParalelo: ${paralelo}\n\n*${titulo}*\n${descripcion}\n\n📅 Fecha de entrega: ${fechaEntrega}`;
 
@@ -42,7 +44,7 @@ async function enviarNotificacion({ titulo, descripcion, fechaEntrega, grado, pa
   }
 }
 
-// ✅ Registrar chatIdTelegram para estudiantes
+// Comando para registrar estudiante con /start <cedula>
 bot.onText(/\/start (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const cedula = match[1].trim();
@@ -52,20 +54,21 @@ bot.onText(/\/start (.+)/, async (msg, match) => {
     const query = await estudiantesRef.where('cedula', '==', cedula).get();
 
     if (query.empty) {
-      bot.sendMessage(chatId, 'No se encontró ningún estudiante con esa cédula.');
+      await bot.sendMessage(chatId, 'No se encontró ningún estudiante con esa cédula.');
       return;
     }
 
     query.forEach(doc => {
       doc.ref.update({ chatIdTelegram: chatId });
-      bot.sendMessage(chatId, '✅ Tu Telegram ha sido vinculado exitosamente a tu cuenta.');
+      bot.sendMessage(chatId, '✅ Tu Telegram ha sido vinculado exitosamente a tu cuenta de estudiante.');
     });
   } catch (error) {
-    bot.sendMessage(chatId, '❌ Ocurrió un error, inténtalo más tarde.');
+    console.error('Error vinculando estudiante:', error);
+    await bot.sendMessage(chatId, '❌ Ocurrió un error, inténtalo más tarde.');
   }
 });
 
-// ✅ Registrar chatIdTelegram para padres
+// Comando para registrar padre con /startpadre <cedula>
 bot.onText(/\/startpadre (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const cedula = match[1].trim();
@@ -75,7 +78,7 @@ bot.onText(/\/startpadre (.+)/, async (msg, match) => {
     const query = await padresRef.where('cedula', '==', cedula).get();
 
     if (query.empty) {
-      bot.sendMessage(chatId, 'No se encontró ningún padre con esa cédula.');
+      await bot.sendMessage(chatId, 'No se encontró ningún padre con esa cédula.');
       return;
     }
 
@@ -84,24 +87,28 @@ bot.onText(/\/startpadre (.+)/, async (msg, match) => {
       bot.sendMessage(chatId, '✅ Tu Telegram ha sido vinculado exitosamente a tu cuenta de padre.');
     });
   } catch (error) {
-    bot.sendMessage(chatId, '❌ Ocurrió un error, inténtalo más tarde.');
+    console.error('Error vinculando padre:', error);
+    await bot.sendMessage(chatId, '❌ Ocurrió un error, inténtalo más tarde.');
   }
 });
 
-// 🔔 Escuchar tareas nuevas
+// Escuchar nuevas tareas en las subcolecciones "Tareas" (collectionGroup)
 const tareasRef = db.collectionGroup('Tareas');
 
 tareasRef.onSnapshot(snapshot => {
   snapshot.docChanges().forEach(async change => {
     if (change.type === 'added') {
       const tarea = change.doc.data();
+
       const cursoDocRef = change.doc.ref.parent.parent;
       const cursoDoc = await cursoDocRef.get();
       const cursoData = cursoDoc.exists ? cursoDoc.data() : {};
+
       const grado = cursoData.grado || 'Desconocido';
       const paralelo = cursoData.paralelo || 'Desconocido';
       const asignaturaNombre = cursoData.asignaturaNombre || 'Asignatura';
 
+      // Obtener estudiantes del curso y paralelo
       const estudiantesSnap = await db.collection('Estudiantes')
         .where('cursoId', '==', cursoDocRef.id)
         .where('paralelo', '==', paralelo)
@@ -120,12 +127,12 @@ tareasRef.onSnapshot(snapshot => {
         paralelo,
         asignaturaNombre,
         estudiantes,
-        timestamp: admin.firestore.Timestamp.now(),
       };
 
       if (esHoraPermitida()) {
         await enviarNotificacion(dataNotificacion);
       } else {
+        // Guardar para notificar a las 6 AM
         await db.collection('NotificacionesPendientes').add(dataNotificacion);
         console.log('⏰ Notificación diferida para las 6AM');
       }
@@ -133,7 +140,7 @@ tareasRef.onSnapshot(snapshot => {
   });
 });
 
-// 🕕 Tareas pendientes a las 6AM
+// Cron para enviar notificaciones pendientes a las 6AM cada día
 cron.schedule('0 6 * * *', async () => {
   console.log('⏰ Ejecutando notificaciones pendientes (6AM)...');
   const snap = await db.collection('NotificacionesPendientes').get();
